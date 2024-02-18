@@ -44,12 +44,14 @@ type NewsResp struct {
 	TotalResults int        `json:"totalResults,omitempty"`
 	Articles     []Articles `json:"articles,omitempty"`
 	Code         string     `json:"code,omitempty"`
-	Message      int        `json:"message,omitempty"`
+	Message      string     `json:"message,omitempty"`
 }
 
 type SourcesResp struct {
 	Status  string    `json:"status,omitempty"`
 	Sources []Sources `json:"sources,omitempty"`
+	Code    string    `json:"code,omitempty"`
+	Message string    `json:"message,omitempty"`
 }
 
 type newsAPI struct {
@@ -103,6 +105,9 @@ func (rep *newsAPI) GetTopHeadlines(queryParams map[string]interface{}) (NewsRes
 	if err != nil {
 		return newsResp, err
 	}
+	if newsResp.Status == "error" {
+		return NewsResp{}, errors.New(newsResp.Message)
+	}
 	return newsResp, nil
 }
 
@@ -124,6 +129,9 @@ func (rep *newsAPI) GetEveryThing(queryParams map[string]interface{}) (NewsResp,
 	if err != nil {
 		return newsResp, err
 	}
+	if newsResp.Status == "error" {
+		return NewsResp{}, errors.New(newsResp.Message)
+	}
 	return newsResp, nil
 }
 
@@ -144,6 +152,9 @@ func (rep *newsAPI) GetSources(queryParams map[string]interface{}) (SourcesResp,
 	err = json.Unmarshal(resp, &sourceResp)
 	if err != nil {
 		return sourceResp, err
+	}
+	if sourceResp.Status == "error" {
+		return SourcesResp{}, errors.New(sourceResp.Message)
 	}
 	return sourceResp, nil
 }
