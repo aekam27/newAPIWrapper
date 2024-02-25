@@ -1,4 +1,4 @@
-module newAPIWrapper
+module github.com/aekam27/newsAPIWrapper
 
 go 1.21.6
 

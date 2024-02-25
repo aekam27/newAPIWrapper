@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
-	news_api "newAPIWrapper"
 	"strings"
 	"testing"
+
+	news_api "github.com/aekam27/newsAPIWrapper"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
