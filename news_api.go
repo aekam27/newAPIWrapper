@@ -13,9 +13,8 @@ import (
 )
 
 type NewsAPIDAO interface {
-	GetTopHeadlines(queryParams map[string]interface{}) (NewsResp, error)
-	GetEveryThing(queryParams map[string]interface{}) (NewsResp, error)
-	GetSources(queryParams map[string]interface{}) (SourcesResp, error)
+	GetNews(apiURL string) (NewsResp, error)
+	GetSources(apiURL string) (SourcesResp, error)
 }
 
 type Articles struct {
@@ -85,18 +84,38 @@ var (
 	allowedCountries  = []string{"ae", "ar", "at", "au", "be", "bg", "br", "ca", "ch", "cn", "co", "cu", "cz", "de", "eg", "fr", "gb", "gr", "hk", "hu", "id", "ie", "il", "in", "it", "jp", "kr", "lt", "lv", "ma", "mx", "my", "ng", "nl", "no", "nz", "ph", "pl", "pt", "ro", "rs", "ru", "sa", "se", "sg", "si", "sk", "th", "tr", "tw", "ua", "us", "ve", "za"}
 	allowedCategories = []string{"business", "entertainment", "general", "health", "science", "sports", "technology"}
 	allowedSearchIn   = []string{"title", "description", "content"}
+	allowedQueryTypes = []string{"everything", "top-headlines", "sources"}
+	queryTypeUrlMap   = map[string]string{
+		"everything":    everyThingUrl,
+		"top-headlines": topHeadlinesUrl,
+		"sources":       sourceUrl,
+	}
 )
 
-func (rep *newsAPI) GetTopHeadlines(queryParams map[string]interface{}) (NewsResp, error) {
-	var (
-		apiKey   = rep.apikey
-		apiURL   = everyThingUrl
-		newsResp = NewsResp{}
-	)
+func ConstructQueryURL(queryType string, queryParams map[string]interface{}) (string, error) {
+	apiURL := ""
+	for _, allowedValue := range allowedQueryTypes {
+		if strings.EqualFold(allowedValue, queryType) {
+			apiURL = queryTypeUrlMap[allowedValue]
+			break
+		}
+	}
+	if apiURL == "" {
+		return "", errors.New("invalid query type")
+	}
+
 	apiURL, err := constructURL(queryParams, apiURL)
 	if err != nil {
-		return newsResp, err
+		return "", err
 	}
+	return apiURL, nil
+}
+
+func (rep *newsAPI) GetNews(apiURL string) (NewsResp, error) {
+	var (
+		apiKey   = rep.apikey
+		newsResp = NewsResp{}
+	)
 	resp, err := getRequest(apiURL, apiKey)
 	if err != nil {
 		return newsResp, err
@@ -111,40 +130,11 @@ func (rep *newsAPI) GetTopHeadlines(queryParams map[string]interface{}) (NewsRes
 	return newsResp, nil
 }
 
-func (rep *newsAPI) GetEveryThing(queryParams map[string]interface{}) (NewsResp, error) {
-	var (
-		apiKey   = rep.apikey
-		apiURL   = topHeadlinesUrl
-		newsResp = NewsResp{}
-	)
-	apiURL, err := constructURL(queryParams, apiURL)
-	if err != nil {
-		return newsResp, err
-	}
-	resp, err := getRequest(apiURL, apiKey)
-	if err != nil {
-		return newsResp, err
-	}
-	err = json.Unmarshal(resp, &newsResp)
-	if err != nil {
-		return newsResp, err
-	}
-	if newsResp.Status == "error" {
-		return NewsResp{}, errors.New(newsResp.Message)
-	}
-	return newsResp, nil
-}
-
-func (rep *newsAPI) GetSources(queryParams map[string]interface{}) (SourcesResp, error) {
+func (rep *newsAPI) GetSources(apiURL string) (SourcesResp, error) {
 	var (
 		apiKey     = rep.apikey
-		apiURL     = sourceUrl
 		sourceResp = SourcesResp{}
 	)
-	apiURL, err := constructURL(queryParams, apiURL)
-	if err != nil {
-		return sourceResp, err
-	}
 	resp, err := getRequest(apiURL, apiKey)
 	if err != nil {
 		return sourceResp, err
@@ -166,6 +156,7 @@ func urlEncodeString(str string) string {
 
 func constructURL(queryParams map[string]interface{}, apiURL string) (string, error) {
 	if q, ok := queryParams["q"].(string); ok {
+		q := strings.TrimSpace(q)
 		if len(q) > 500 {
 			return "", errors.New("query string length should be lessthan equalto 500")
 		} else if len(q) < 1 {
@@ -178,27 +169,21 @@ func constructURL(queryParams map[string]interface{}, apiURL string) (string, er
 	if _, ok := queryParams["searchIn"].([]string); ok {
 		searchIn := checkIfValueAllowedInStringArray(queryParams["searchIn"].([]string), allowedSearchIn)
 		if searchIn != "" {
-			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "searchIn=", urlEncodeString(searchIn))
+			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "searchIn=", searchIn)
 		}
 	}
-	if _, ok := queryParams["sources"].([]string); ok {
-		sources := checkIfValueAllowedInStringArray(queryParams["sources"].([]string), []string{})
-		if sources != "" {
-			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "sources=", urlEncodeString(sources))
+	if sourcesArr, ok := queryParams["sources"].([]string); ok {
+		if len(sourcesArr) > 0 {
+			sources := checkIfValueAllowedInStringArray(sourcesArr, []string{})
+			if sources != "" {
+				apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "sources=", urlEncodeString(sources))
+			}
+		} else {
+			apiURL = checkForCountryAndCategory(queryParams, apiURL)
 		}
+
 	} else {
-		if _, ok := queryParams["country"].([]string); ok {
-			sources := checkIfValueAllowedInStringArray(queryParams["country"].([]string), allowedCountries)
-			if sources != "" {
-				apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "country=", urlEncodeString(sources))
-			}
-		}
-		if _, ok := queryParams["category"].([]string); ok {
-			sources := checkIfValueAllowedInStringArray(queryParams["category"].([]string), allowedCategories)
-			if sources != "" {
-				apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "category=", urlEncodeString(sources))
-			}
-		}
+		apiURL = checkForCountryAndCategory(queryParams, apiURL)
 	}
 	if _, ok := queryParams["domains"].([]string); ok {
 		domains := checkIfValueAllowedInStringArray(queryParams["domains"].([]string), []string{})
@@ -213,25 +198,36 @@ func constructURL(queryParams map[string]interface{}, apiURL string) (string, er
 		}
 	}
 	if _, ok := queryParams["from"].(string); ok {
-		from, err := parseDTString(queryParams["from"].(string))
-		if err == nil {
-			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "from=", urlEncodeString(from))
+		if _, ok := queryParams["to"].(string); ok {
+			datesQuery, err := compareForValidtoAndFromDate(queryParams["from"].(string), queryParams["to"].(string))
+			if err == nil {
+				apiURL = fmt.Sprintf("%s%s%s", apiURL, "&", datesQuery)
+			} else {
+				log.Print(err.Error())
+				log.Printf("unable to parse dates rolling back to defaults")
+			}
 		} else {
-			log.Printf("unable to parse from date retrieving to defaults")
+			to, err := parseDTString(queryParams["from"].(string))
+			if err == nil {
+				apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "from=", to)
+			} else {
+				log.Print(err.Error())
+				log.Printf("unable to parse to date rolling back to defaults")
+			}
 		}
-	}
-	if _, ok := queryParams["to"].(string); ok {
+	} else if _, ok := queryParams["to"].(string); ok {
 		to, err := parseDTString(queryParams["to"].(string))
 		if err == nil {
-			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "to=", urlEncodeString(to))
+			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "to=", to)
 		} else {
-			log.Printf("unable to parse to date retrieving to defaults")
+			log.Print(err.Error())
+			log.Printf("unable to parse to date rolling back to defaults")
 		}
 	}
 	if _, ok := queryParams["language"].([]string); ok {
 		languages := checkIfValueAllowedInStringArray(queryParams["language"].([]string), allowedLanguage)
 		if languages != "" {
-			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "language=", urlEncodeString(languages))
+			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "language=", languages)
 		}
 	}
 	if _, ok := queryParams["sortBy"].(string); ok {
@@ -242,9 +238,16 @@ func constructURL(queryParams map[string]interface{}, apiURL string) (string, er
 				break
 			}
 		}
-		apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "sortBy=", urlEncodeString(sortBy))
+		apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "sortBy=", sortBy)
 	}
 	if pageSize, ok := queryParams["pageSize"].(int64); ok {
+		if pageSize < 1 {
+			pageSize = defaultPageSize
+		}
+		if pageSize > 100 {
+			log.Printf("page number is greater than maxPage size allowed using maxAllowed Value of 100")
+			pageSize = maxpageSize
+		}
 		apiURL = fmt.Sprintf("%s%s%s%d", apiURL, "&", "pageSize=", pageSize)
 	}
 	if page, ok := queryParams["page"].(int64); ok {
@@ -252,23 +255,49 @@ func constructURL(queryParams map[string]interface{}, apiURL string) (string, er
 			log.Printf("page number is less than 1 using default value")
 			page = defaultPage
 		}
-		if page > 100 {
-			log.Printf("page number is greater than maxPage size allowed using maxAllowed Value of 100")
-			page = maxpageSize
-		}
 		apiURL = fmt.Sprintf("%s%s%s%d", apiURL, "&", "page=", page)
 	}
 	return apiURL, nil
 }
 
+func checkForCountryAndCategory(queryParams map[string]interface{}, apiURL string) string {
+	if _, ok := queryParams["country"].([]string); ok {
+		country := checkIfValueAllowedInStringArray(queryParams["country"].([]string), allowedCountries)
+		if country != "" {
+			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "country=", country)
+		}
+	}
+	if _, ok := queryParams["category"].([]string); ok {
+		category := checkIfValueAllowedInStringArray(queryParams["category"].([]string), allowedCategories)
+		if category != "" {
+			apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "category=", category)
+		}
+	}
+	return apiURL
+}
+
 // ISO 8601
 func parseDTString(dateTimeString string) (string, error) {
-	parsedDT, err := time.Parse(time.RFC3339, dateTimeString)
+	_, err := time.Parse(time.RFC3339, dateTimeString)
 	if err != nil {
 		return "", err
 	}
-	iso8601String := parsedDT.Format(time.RFC3339)
-	return iso8601String, nil
+	return dateTimeString, nil
+}
+
+func compareForValidtoAndFromDate(fromDate, toDate string) (string, error) {
+	parsedToDate, err := time.Parse(time.RFC3339, toDate)
+	if err != nil {
+		return "", err
+	}
+	parsedFromDate, err := time.Parse(time.RFC3339, fromDate)
+	if err != nil {
+		return "", err
+	}
+	if parsedToDate.Before(parsedFromDate) {
+		return "", errors.New("invalid dated: to date timestamp is before from date timestamp")
+	}
+	return fmt.Sprintf("%s%s%s%s", "from=", fromDate, "&to=", toDate), nil
 }
 
 func checkIfValueAllowedInStringArray(strArr []string, allowedArray []string) string {
