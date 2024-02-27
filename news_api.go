@@ -162,7 +162,7 @@ func constructURL(queryParams map[string]interface{}, apiURL string) (string, er
 		} else if len(q) < 1 {
 			return "", errors.New("query string length should be greaterthan equalto 1")
 		}
-		apiURL = fmt.Sprintf("%s%s%s%s", apiURL, "&", "q=", urlEncodeString(q))
+		apiURL = fmt.Sprintf("%s%s%s", apiURL, "q=", urlEncodeString(q))
 	} else {
 		return "", errors.New("query string is required")
 	}
