@@ -2,7 +2,7 @@
 
  Import:
 
-    import "github.com/aekam27/news_api"
+    import "github.com/aekam27/newsAPIWrapper"
 
  Types:
 
